@@ -5,6 +5,8 @@ import type { Accessor, Disposable, SyncOrAsync } from "../types";
 export const PROPS = {
   /** Internal (private) state */
   INTERNAL_STATE: "_state",
+  /** Previous state */
+  PREV_STATE: "_prevState",
   /** The property name for keeping track of whether the class has been initialized */
   IS_INITIALIZED: "_isInitialized",
   /** Initialization method name */
@@ -69,6 +71,7 @@ export const addInit = (
   onDidInit?: () => SyncOrAsync<Disposable | void>
 ) => {
   sClass[PROPS.INTERNAL_STATE] ??= {};
+  sClass[PROPS.PREV_STATE] ??= {};
   sClass[PROPS.INITS] ??= [];
   if (init) sClass[PROPS.INITS].push(init);
   if (onDidInit) sClass[PROPS.ON_DID_INIT] = onDidInit;
@@ -89,7 +92,8 @@ export const addInit = (
 
     disposables.push(
       { dispose: () => (sClass[PROPS.IS_INITIALIZED] = false) },
-      { dispose: () => (sClass[PROPS.INTERNAL_STATE] = {}) }
+      { dispose: () => (sClass[PROPS.INTERNAL_STATE] = {}) },
+      { dispose: () => (sClass[PROPS.PREV_STATE] = {}) }
     );
 
     return {
@@ -201,18 +205,18 @@ export const addOnDidChange = (
     // Only dispatch if the state has been initialized
     if (!sClass[PROPS.IS_INITIALIZED]) return;
 
-    // Dispatch the prop update event if `prop` exists
+    // Dispatch the prop update event if `accessor` exists
     if (accessor) {
+      const prevProp = PgCommon.normalizeAccessor(accessor).join("_");
       const value = PgCommon.getValue(sClass, accessor);
-      const prevProp = "__prev" + PgCommon.normalizeAccessor(accessor).join("");
 
       // Only dispatch if the value changes.
       //
       // NOTE: The strict equality check is not enough for objects since it only
       // compares by memory location.
-      if (sClass[prevProp] === value && typeof value !== "object") return;
+      if (PgCommon.isEqual(sClass[PROPS.PREV_STATE][prevProp], value)) return;
 
-      sClass[prevProp] = value;
+      sClass[PROPS.PREV_STATE][prevProp] = value;
       PgCommon.createAndDispatchCustomEvent(
         getChangeEventName(accessor),
         value
