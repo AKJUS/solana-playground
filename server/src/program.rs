@@ -39,31 +39,33 @@ pub fn build(
 ) -> anyhow::Result<(String, Option<Idl>)> {
     // Check file count
     if files.len() > MAX_FILE_AMOUNT {
-        return Err(anyhow!("Exceeded maximum file amount({MAX_FILE_AMOUNT})"));
+        return Err(anyhow!(
+            "Exceeded maximum file amount: {} > {MAX_FILE_AMOUNT}",
+            files.len()
+        ));
     }
 
     // Check file paths
     static ALLOWED_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^/src/[\w/-]+\.rs$").unwrap());
-    let is_valid = files.iter().all(|[path, _]| {
-        ALLOWED_REGEX.is_match(path)
-            && path.len() <= MAX_PATH_LENGTH
+    for [path, _] in files {
+        let is_valid = path.len() <= MAX_PATH_LENGTH
             && !path.contains("..")
             && !path.contains("//")
-    });
-    if !is_valid {
-        return Err(anyhow!("Invalid path"));
+            && ALLOWED_REGEX.is_match(path);
+        if !is_valid {
+            return Err(anyhow!("Invalid path: {path}"));
+        }
     }
 
     // Write files
     let program_path = Path::new(PROGRAMS_DIR).join(program_name);
     for [path, content] in files {
-        // TODO: Send relative path from client and remove this line
         let relative_path = path.trim_start_matches('/');
         let item_path = program_path.join(relative_path);
 
         // Create directories when necessary
-        let parent_path = item_path.parent().expect("Should have parent");
+        let parent_path = item_path.parent().expect("Must have parent");
         fs::create_dir_all(parent_path)?;
 
         // Write file
@@ -111,7 +113,7 @@ pub fn build(
             )
         })
         .transpose()
-        .map_or_else(|e| (format!("Error: {e}"), None), |idl| (stderr, idl));
+        .map_or_else(|e| (format!("IDL error: {e}"), None), |idl| (stderr, idl));
     Ok(ret)
 }
 
